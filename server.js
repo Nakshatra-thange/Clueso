@@ -64,6 +64,46 @@ app.get('/api/screenshots', (req, res) => {
   res.json(files);
 });
 
+app.use('/diffs', express.static(path.join(__dirname, 'diffs')));
+
+app.post('/api/compare', upload.single('oldScreenshot'), async (req, res) => {
+    try {
+      const { newScreenshotFileName } = req.body;
+  
+      if (!req.file || !newScreenshotFileName) {
+        return res.status(400).json({
+          error: 'Both oldScreenshot (file) and newScreenshotFileName (string) are required'
+        });
+      }
+  
+      const oldImagePath = req.file.path;
+      const newImagePath = path.join(__dirname, 'screenshots', newScreenshotFileName);
+  
+      if (!fs.existsSync(newImagePath)) {
+        return res.status(404).json({ error: 'New screenshot not found. Capture it first via /api/capture' });
+      }
+  
+      const diffFileName = `diff-${Date.now()}.png`;
+      const diffOutputPath = path.join(__dirname, 'diffs', diffFileName);
+  
+      const result = compareImages(oldImagePath, newImagePath, diffOutputPath);
+  
+
+      const isStale = result.driftPercentage > 5;
+  
+      res.json({
+        success: true,
+        isStale,
+        driftPercentage: result.driftPercentage,
+        diffImage: `/diffs/${diffFileName}`,
+        comparedDimensions: { width: result.width, height: result.height }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Comparison failed', details: err.message });
+    }
+  });
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
